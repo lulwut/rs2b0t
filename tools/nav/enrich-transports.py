@@ -283,6 +283,12 @@ def main() -> None:
         enriched: list[dict] = []
         for raw in edges:
             edge = dict(raw)
+            # Exact metadata may have been authored by a more specific
+            # generator (notably derive-ladders.py). Do not replace it with a
+            # proximity match that can choose the wrong object in a cluster.
+            if all(field in edge for field in ("locId", "locX", "locZ", "debugName", "options")):
+                enriched.append(edge)
+                continue
             resolved = resolve_source_loc(edge, configs, spatial, allowed_stair_debugs)
             if resolved:
                 config, placement = resolved

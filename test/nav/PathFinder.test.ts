@@ -4,10 +4,7 @@ import { PathFinder, type TransportEdgeData } from '#/bot/nav/PathFinder.js';
 function fullyWalkablePack(): Uint8Array {
     const perLevel = 4096 + 512;
     const bytes = new Uint8Array(10 + 3 + 2 * perLevel);
-    bytes[0] = 0x4c;
-    bytes[1] = 0x43;
-    bytes[2] = 0x4e;
-    bytes[3] = 0x56;
+    bytes[0] = 0x4c; bytes[1] = 0x43; bytes[2] = 0x4e; bytes[3] = 0x56;
     bytes[4] = 1;
     bytes[5] = 0;
     bytes[8] = 1;
@@ -109,7 +106,10 @@ const DZ8 = [1, 0, -1, 0, 1, -1, -1, 1];
 function v2Pack(): { bytes: Uint8Array; blockTile(x: number, z: number): void } {
     const perLevel = 4096 + 512 + 2048;
     const bytes = new Uint8Array(10 + 3 + perLevel);
-    bytes[0] = 0x4c; bytes[1] = 0x43; bytes[2] = 0x4e; bytes[3] = 0x56;
+    bytes[0] = 0x4c;
+    bytes[1] = 0x43;
+    bytes[2] = 0x4e;
+    bytes[3] = 0x56;
     bytes[4] = 2;
     bytes[5] = 0;
     bytes[8] = 1;
@@ -178,3 +178,4 @@ describe('wall-aware goal candidates (W4)', () => {
         const out = finder.findPath({ x: 2, z: 30, level: 0 }, { x: 30, z: 30, level: 0 });
         expect(out.ok).toBe(true);
     });
+});
