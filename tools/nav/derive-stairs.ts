@@ -21,6 +21,14 @@ const packPath = argVal('--pack') ?? 'out/collision.lcnav.gz';
 
 const LADDER_LOC_IDS = new Set([1746, 1747, 1748, 1749, 1750]);
 
+// These destinations contain Castle Wars spawn trapdoors rather than a
+// Climb-down ladder. Keep the rejected auto-reverses in stairEdges.json as
+// documentation, but PathFinder must not route through them.
+const DISABLED_AUTO_REVERSES = new Map<string, string>([
+    ['2370,3134,2>2370,3134,1', 'Castle Wars Zamorak spawn trapdoor (loc 4472) only offers Open; revision 274 has no Climb-down loc or handler.'],
+    ['2429,3075,2>2429,3075,1', 'Castle Wars Saradomin spawn trapdoor (loc 4471) only offers Open; revision 274 has no Climb-down loc or handler.']
+]);
+
 function edge(from: NavPoint, to: NavPoint, locName: string, action: string): TransportEdgeData {
     return { from, to, locName, action, kind: 'stair' };
 }
@@ -101,7 +109,9 @@ function snapAndReverse(finder: PathFinder, curated: TransportEdgeData[], raw: T
     }
     for (const e of snapped) {
         if (e.from.level !== e.to.level && /-(up|down)/i.test(e.action)) {
-            add({ from: e.to, to: e.from, locName: e.locName, action: reverseAction(e.action), kind: e.kind });
+            const reverse: TransportEdgeData = { from: e.to, to: e.from, locName: e.locName, action: reverseAction(e.action), kind: e.kind };
+            const disabledReason = DISABLED_AUTO_REVERSES.get(key(reverse));
+            add(disabledReason ? { ...reverse, disabledReason } : reverse);
         }
     }
 
