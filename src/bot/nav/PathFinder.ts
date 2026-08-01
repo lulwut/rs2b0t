@@ -36,6 +36,15 @@ export interface TransportEdgeData {
     locName: string;
     action: string;
     kind: string;
+    /** Exact cache loc identity and map tile, when the edge is loc-backed. */
+    locId?: number;
+    locX?: number;
+    locZ?: number;
+    /** LostCity source metadata retained for auditing and regeneration. */
+    debugName?: string;
+    options?: string[];
+    /** Keep a known-invalid derived row documented without making it routable. */
+    disabledReason?: string;
 }
 
 export type NavRequest = { type: 'init'; pack: ArrayBuffer } | { type: 'path'; id: number; from: NavPoint; to: NavPoint; avoid?: { x: number; z: number }[]; maxExpansions?: number };
@@ -236,6 +245,9 @@ export class PathFinder {
         }
 
         for (const edge of [...transports, ...stairs]) {
+            if (edge.disabledReason) {
+                continue;
+            }
             if (!this.walkable(edge.from.x, edge.from.z, edge.from.level) || !this.walkable(edge.to.x, edge.to.z, edge.to.level)) {
                 continue;
             }
@@ -248,8 +260,9 @@ export class PathFinder {
                 // Diagonal wall doors occupy the otherwise-unwalkable midpoint
                 // between their two stand tiles. Recording a stand tile here
                 // makes the executor confuse nearby doors and avoidance strikes.
-                locX: hasMidpointDoor ? edge.from.x + dx / 2 : edge.from.x,
-                locZ: hasMidpointDoor ? edge.from.z + dz / 2 : edge.from.z,
+                locX: edge.locX ?? (hasMidpointDoor ? edge.from.x + dx / 2 : edge.from.x),
+                locZ: edge.locZ ?? (hasMidpointDoor ? edge.from.z + dz / 2 : edge.from.z),
+                locId: edge.locId,
                 toLevel: edge.to.level !== edge.from.level ? edge.to.level : undefined,
                 toTile: edge.kind === 'dungeon' ? { x: edge.to.x, z: edge.to.z } : undefined
             };
