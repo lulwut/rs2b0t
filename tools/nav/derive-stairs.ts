@@ -9,6 +9,10 @@ import { PathFinder, type NavPoint, type TransportEdgeData } from '#/bot/nav/Pat
 import { Reader, bridgedLevel, forEachLoc, loadLocTypes, loadMapsquares, parseLands } from './lib.js';
 import { parseSwitchStairs } from './stairsParse.js';
 
+// This is the first stage of transport generation and intentionally emits
+// bare source edges. Use tools/nav/derive-transports.sh to follow it with full
+// ladder derivation and exact LostCity loc enrichment in the required order.
+
 function argVal(name: string): string | undefined {
     const i = process.argv.indexOf(name);
     return i >= 0 ? process.argv[i + 1] : undefined;

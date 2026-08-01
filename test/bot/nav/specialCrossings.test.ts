@@ -1,5 +1,5 @@
 import { expect, test, describe } from 'bun:test';
-import { specialCrossingAt, pickChoice, meetsRequirement, matchesUseItem, SPECIAL_CROSSINGS } from '../../../src/bot/nav/data/specialCrossings.js';
+import { specialCrossingAt, specialCrossingForTransport, pickChoice, meetsRequirement, matchesUseItem, SPECIAL_CROSSINGS } from '../../../src/bot/nav/data/specialCrossings.js';
 
 describe('specialCrossingAt', () => {
     test('matches both Al Kharid toll gate tiles', () => {
@@ -39,6 +39,13 @@ describe('specialCrossingAt', () => {
     test('gnome gate: only the enter direction is a special crossing (leave is a plain Open)', () => {
         expect(specialCrossingAt(2461, 3382, 0)).not.toBeNull();
         expect(specialCrossingAt(2461, 3385, 0)).toBeNull();
+    });
+
+    test('gnome gate resolves from its approach tile when transport metadata identifies the loc tile', () => {
+        const exactGateLoc = { locX: 2459, locZ: 3383 };
+        expect(specialCrossingForTransport(exactGateLoc, { x: 2461, z: 3382, level: 0 })?.label)
+            .toBe('Gnome Stronghold gate (Femi boxes)');
+        expect(specialCrossingForTransport(exactGateLoc, { x: 2461, z: 3385, level: 0 })).toBeNull();
     });
 
     test('every crossing carries the fields the executor reads', () => {

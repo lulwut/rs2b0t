@@ -36,4 +36,40 @@ describe('LostCity ladder transport data', () => {
         expect(samePlaneLadders).not.toHaveLength(0);
         expect(samePlaneLadders.every(edge => edge.kind === 'dungeon')).toBe(true);
     });
+
+    test('binds each Mage Arena web crossing to the web between its stand tiles', () => {
+        const web = (fromX: number, toX: number): TransportEdgeData | undefined => transportEdges.find(edge =>
+            edge.from.x === fromX && edge.from.z === 3957 && edge.to.x === toX && edge.to.z === 3957
+        );
+
+        expect(web(3096, 3094)?.locX).toBe(3095);
+        expect(web(3094, 3096)?.locX).toBe(3095);
+        expect(web(3094, 3092)?.locX).toBe(3093);
+        expect(web(3092, 3094)?.locX).toBe(3093);
+    });
+
+    test('binds clustered outdoor stair reverses to their outdoor top locs', () => {
+        const yanille = stairEdges.find(edge => edge.from.x === 2517 && edge.from.z === 3426
+            && edge.from.level === 1 && edge.to.x === 2516 && edge.to.z === 3423 && edge.to.level === 0);
+        const ardougne = stairEdges.find(edge => edge.from.x === 2527 && edge.from.z === 3292
+            && edge.from.level === 1 && edge.to.x === 2526 && edge.to.z === 3290 && edge.to.level === 0);
+
+        expect(yanille).toMatchObject({ locId: 1736, locX: 2516, locZ: 3425, debugName: 'loc_1736' });
+        expect(ardougne).toMatchObject({ locId: 1736, locX: 2526, locZ: 3292, debugName: 'loc_1736' });
+    });
+
+    test('keeps state-dependent Watchtower climbs auditable but out of the active graph', () => {
+        const climbs = stairEdges.filter(edge => edge.debugName === 'watchladderup');
+        const descents = stairEdges.filter(edge => edge.debugName === 'watchladderdown');
+
+        expect(climbs).not.toHaveLength(0);
+        expect(climbs.every(edge => edge.disabledReason?.includes('state-aware transports'))).toBe(true);
+        expect(descents).not.toHaveLength(0);
+        expect(descents.every(edge => !edge.disabledReason)).toBe(true);
+    });
+
+    test('full pipeline leaves every active stair with exact loc metadata', () => {
+        const active = stairEdges.filter(edge => !edge.disabledReason);
+        expect(active.every(edge => edge.locId !== undefined && edge.locX !== undefined && edge.locZ !== undefined)).toBe(true);
+    });
 });

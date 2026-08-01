@@ -42,6 +42,62 @@ traversal edges that plain collision cannot express:
 | [`stairEdges.json`](../src/bot/nav/data/stairEdges.json) | [`tools/nav/derive-stairs.ts`](../tools/nav/derive-stairs.ts) | stairs and ladders, so paths can change level |
 | [`transports.json`](../src/bot/nav/data/transports.json) | curated | edges the derivations cannot infer |
 
+### Transport generation and exact loc metadata
+
+Location-backed rows may carry these additive fields:
+
+| Field | Meaning |
+|---|---|
+| `locId` | Exact cache loc type the executor must interact with |
+| `locX`, `locZ` | Actual clickable loc tile, which can differ from the player's `from` tile |
+| `debugName` | LostCity's symbolic loc name, useful when auditing generated data |
+| `options` | Non-empty interaction options from the LostCity loc definition |
+
+When `locId` is present, execution requires both the exact ID and exact loc tile.
+This prevents a nearby same-named object from being selected. Older or custom rows
+without metadata remain compatible: they retain the legacy name/action lookup within
+three tiles of `locX/locZ`.
+
+Regenerate both transport files through the ordered wrapper:
+
+```bash
+ENGINE_DIR=/path/to/Engine-TS CONTENT_DIR=/path/to/Content bun run gen:nav-transports
+```
+
+The order is significant: `derive-stairs.ts` first emits source stair edges,
+`derive-ladders.py` replaces the old five-ID generic scan with the complete
+RuneScript-derived ladder inventory, and `enrich-transports.py` finally attaches
+exact loc metadata to everything not already resolved by the ladder generator.
+Running the stair stage last would discard that metadata and the full ladder set.
+
+The enrichment stage deliberately uses two proximity rules:
+
+- short local doors, gates, and stairs are ranked against the midpoint between
+  their stand tiles, so reciprocal edges select the same intervening loc;
+- long dungeon and teleport edges remain ranked from their source, because their
+  destination can be thousands of tiles away while the clickable loc stays nearby.
+
+Ladders derived from RuneScript already know their precise source placement. Their
+metadata is preserved rather than guessed again by proximity. This distinction is
+important around clustered objects such as the two Mage Arena webs and the outdoor
+wooden staircase beside a spiral staircase.
+
+After regeneration, check that the committed output is current and that every active
+stair still carries exact metadata:
+
+```bash
+python3 tools/nav/enrich-transports.py --content "$CONTENT_DIR" --check
+bun test test/nav test/bot/nav
+```
+
+Rows with `disabledReason` are retained for audit coverage but are not compiled into
+the path graph. A state-dependent handler must not be enabled with a guessed default:
+for example, `watchladderup` selects different map destinations according to Watchtower
+quest state. Guessing the completed-quest destination for an earlier account would
+not merely fail—it would describe a different route than the server actually takes.
+Its deterministic downward interactions remain active; the upward alternatives stay
+disabled until the graph can express and evaluate the relevant player-state condition.
+
 Multi-level routing is therefore a **data** property, not an algorithm one: the
 executor already knows how to climb, and gains a new route the moment an edge for it
 exists in the pack.
@@ -196,9 +252,11 @@ without it a sub-20 account paths at a log it can never walk and wedges there, i
 of taking the long way round. The coal trucks log cuts mine→Seers from cost 263 to
 156, and prunes back to 263 — still reachable — below the gate.
 
-Note these entries are keyed at the edge's **`from` tile**, not the loc's own tile,
-because `PathFinder` records `transport.locX/locZ` as the edge origin. A two-way
-shortcut therefore needs two entries, one per direction.
+These entries are directional and normally keyed at the edge's **`from` tile**.
+Enriched transports separately carry the clickable object's exact `locX/locZ`, so
+the executor first checks the loc tile and then falls back to the approach tile when
+resolving a special crossing. A two-way shortcut still needs two entries, one per
+direction.
 
 Ship crossings carry a `toTile`, because they teleport rather than step — the
 executor waits to land near that tile instead of watching for an adjacent move. A

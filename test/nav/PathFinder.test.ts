@@ -4,7 +4,10 @@ import { PathFinder, type TransportEdgeData } from '#/bot/nav/PathFinder.js';
 function fullyWalkablePack(): Uint8Array {
     const perLevel = 4096 + 512;
     const bytes = new Uint8Array(10 + 3 + 2 * perLevel);
-    bytes[0] = 0x4c; bytes[1] = 0x43; bytes[2] = 0x4e; bytes[3] = 0x56;
+    bytes[0] = 0x4c;
+    bytes[1] = 0x43;
+    bytes[2] = 0x4e;
+    bytes[3] = 0x56;
     bytes[4] = 1;
     bytes[5] = 0;
     bytes[8] = 1;

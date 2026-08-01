@@ -8,7 +8,7 @@ import { Locs, type Loc } from '../api/queries/Locs.js';
 import { Npcs } from '../api/queries/Npcs.js';
 import { Inventory } from '../api/hud/Inventory.js';
 import { ChatDialog } from '../api/hud/ChatDialog.js';
-import { SPECIAL_CROSSINGS, specialCrossingAt, pickChoice, meetsRequirement, meetsSkill, matchesUseItem, type SpecialCrossing } from './data/specialCrossings.js';
+import { SPECIAL_CROSSINGS, specialCrossingForTransport, pickChoice, meetsRequirement, meetsSkill, matchesUseItem, type SpecialCrossing } from './data/specialCrossings.js';
 import { Skills } from '../api/hud/Skills.js';
 import { Reachability } from '../api/Reachability.js';
 import { ActionRouter } from '../input/ActionRouter.js';
@@ -434,7 +434,7 @@ class WalkExecutorImpl {
     private async handleTransport(approach: PathStep, step: PathStep, log: (msg: string) => void): Promise<boolean> {
         const transport = step.transport!;
 
-        const special = specialCrossingAt(transport.locX, transport.locZ, step.level);
+        const special = specialCrossingForTransport(transport, approach);
         if (special) {
             return this.handleSpecialCrossing(approach, step, special, log);
         }

@@ -13,6 +13,9 @@ additive:
   options    All non-empty interaction options on the source location.
 
 NPC-backed transports retain their original shape because they have no loc id.
+
+Run this as the final stage of tools/nav/derive-transports.sh.  Running an
+earlier generator afterward can replace enriched rows with bare source edges.
 """
 
 from __future__ import annotations
@@ -171,7 +174,18 @@ def resolve_source_loc(
     wanted_name = normalized(edge.get("locName"))
     wanted_action = normalized(edge.get("action"))
     kind = normalized(edge.get("kind"))
-    ranked: list[tuple[int, int, int, LocConfig, Placement]] = []
+    ranked: list[tuple[float, float, int, int, LocConfig, Placement]] = []
+
+    source = edge["from"]
+    destination = edge["to"]
+    span = max(abs(destination["x"] - source["x"]), abs(destination["z"] - source["z"]))
+    # Local barrier/stair edges generally put the clickable loc between their
+    # two stand tiles. Long dungeon/teleport edges instead put it by the source,
+    # so applying midpoint scoring to those would send the search thousands of
+    # tiles away from the actual interaction.
+    use_midpoint = kind in {"door", "gate", "stair"} and span <= 8
+    midpoint_x = (source["x"] + destination["x"]) / 2
+    midpoint_z = (source["z"] + destination["z"]) / 2
 
     for distance, placement in candidates_near(spatial, edge["from"]):
         placed_config = configs.get(placement.loc_id)
@@ -228,18 +242,20 @@ def resolve_source_loc(
                 score += 20
             if placement.level == edge["from"]["level"]:
                 score += 8
-            score -= distance * 6
-            ranked.append((score, -distance, -placement.loc_id, config, placement))
+            corridor_distance = max(abs(placement.x - midpoint_x), abs(placement.z - midpoint_z))
+            proximity = corridor_distance if use_midpoint else distance
+            score -= proximity * 6
+            ranked.append((score, -proximity, -distance, -placement.loc_id, config, placement))
 
     if not ranked:
         return None
-    ranked.sort(key=lambda item: item[:3], reverse=True)
+    ranked.sort(key=lambda item: item[:4], reverse=True)
     best = ranked[0]
     # Name-only matches far from the source are too ambiguous for common names
     # such as Door, Gate, Ladder, and Staircase.
     if best[0] < 70:
         return None
-    return best[3], best[4]
+    return best[4], best[5]
 
 
 def edge_key(edge: dict) -> tuple[int, int, int, int, int, int, str, str]:
@@ -283,10 +299,15 @@ def main() -> None:
         enriched: list[dict] = []
         for raw in edges:
             edge = dict(raw)
-            # Exact metadata may have been authored by a more specific
-            # generator (notably derive-ladders.py). Do not replace it with a
-            # proximity match that can choose the wrong object in a cluster.
-            if all(field in edge for field in ("locId", "locX", "locZ", "debugName", "options")):
+            existing = configs.get(edge.get("locId", -1))
+            source_backed_ladder = existing is not None and (
+                normalized(existing.display_name) == "ladder"
+                or "ladder" in existing.debug_name.lower()
+            )
+            # derive-ladders.py resolves its clickable placement directly from
+            # the handler source. Preserve those exact rows; refresh all other
+            # metadata so a ranking fix can repair previously mis-bound data.
+            if source_backed_ladder and all(field in edge for field in ("locId", "locX", "locZ", "debugName", "options")):
                 enriched.append(edge)
                 continue
             resolved = resolve_source_loc(edge, configs, spatial, allowed_stair_debugs)

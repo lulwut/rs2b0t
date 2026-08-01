@@ -22,6 +22,7 @@
         "gen:shopdb": "bun tools/shops/gen-shopdb.ts",
         "gen:cluedb": "bun tools/clues/gen-cluedb.ts",
         "gen:dropdb": "bun tools/combat/gen-dropdb.ts",
+        "gen:nav-transports": "sh tools/nav/derive-transports.sh",
         "gen:scriptdocs": "bun tools/gen-scriptdocs.ts",
         "verify:gather-locs": "bun tools/verify-gathering-locations.ts",
         "verify:gatheringbot": "bun tools/gatheringbot-test.ts",

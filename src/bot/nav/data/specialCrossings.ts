@@ -37,6 +37,16 @@ export function specialCrossingAt(x: number, z: number, level: number): SpecialC
     return SPECIAL_CROSSINGS.find(c => c.x === x && c.z === z && c.level === level) ?? null;
 }
 
+export function specialCrossingForTransport(
+    transport: { locX: number; locZ: number },
+    approach: { x: number; z: number; level: number }
+): SpecialCrossing | null {
+    // New transport rows identify the exact clickable loc, while historical
+    // special crossings are directional and keyed by their approach tile.
+    return specialCrossingAt(transport.locX, transport.locZ, approach.level)
+        ?? specialCrossingAt(approach.x, approach.z, approach.level);
+}
+
 export function pickChoice(options: string[], choose: string[]): string | null {
     const wants = choose.map(c => c.toLowerCase());
     return options.find(o => wants.some(w => o.toLowerCase().includes(w))) ?? null;
