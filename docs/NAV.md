@@ -39,47 +39,8 @@ traversal edges that plain collision cannot express:
 | Data | Source | What it adds |
 |---|---|---|
 | [`doors.json`](../src/bot/nav/data/doors.json) | [`tools/nav/derive-doors.ts`](../tools/nav/derive-doors.ts) | openable barriers, and which tiles they join |
-| [`stairEdges.json`](../src/bot/nav/data/stairEdges.json) | [`tools/nav/derive-stairs.ts`](../tools/nav/derive-stairs.ts), [`tools/nav/enrich-transports.py`](../tools/nav/enrich-transports.py), then [`tools/nav/derive-ladders.py`](../tools/nav/derive-ladders.py) | stairs and plane-changing ladders |
-| [`transports.json`](../src/bot/nav/data/transports.json) | curated, then the transport and ladder generators above | same-plane links, including cellar and dungeon ladders |
-
-Location-backed transport rows may also record `locId`, `locX`, and `locZ`, plus the
-LostCity `debugName` and full `options` list used to derive them. The first three
-fields let the executor identify the exact clickable object instead of guessing by
-display name within three tiles. Rows without them retain the legacy proximity
-lookup, which is required for NPC-backed fares and keeps older private data files
-compatible.
-
-Regenerate the metadata and complete ladder inventory against matching LostCity
-Content and Engine checkouts with:
-
-```sh
-python3 tools/nav/enrich-transports.py --content ../Content
-python3 tools/nav/derive-ladders.py \
-    --content ../Content \
-    --engine ../Engine-TS \
-    --pack out/collision.lcnav.gz
-```
-
-`derive-ladders.py` reads every placed loc whose display/debug name identifies a
-ladder and whose options contain a climb action. It resolves destinations from
-the corresponding `oploc` RuneScript handler and uses the collision pack to
-separate the clickable loc tile from walkable source and destination tiles. In
-the current LostCity snapshot that covers 83 loc types, 683 placements, and 732
-interactions. Plane changes are written to `stairEdges.json`; same-plane map
-offsets such as the Mining Guild are written as `kind: "dungeon"` transports so
-the executor waits for the destination tile rather than treating them as doors.
-
-Access requirements are intentionally deferred. Mining level, quest state,
-tickets, minigame rank, inventory checks, and similar gates are not yet encoded,
-so an otherwise deterministic active edge may fail for an ineligible player.
-Handlers whose *destination itself* changes with state remain disabled until the
-navigator can choose a variant safely.
-
-A generated row with `disabledReason` is deliberately retained as an auditable
-rejection but is not compiled into the routing graph. This covers tempting
-automatic reverses with no matching interaction, broken or dialogue-only
-ladders, choice menus, state-dependent destinations, and scripted landings that
-cannot be snapped to this revision's collision.
+| [`stairEdges.json`](../src/bot/nav/data/stairEdges.json) | [`tools/nav/derive-stairs.ts`](../tools/nav/derive-stairs.ts) | stairs and ladders, so paths can change level |
+| [`transports.json`](../src/bot/nav/data/transports.json) | curated | edges the derivations cannot infer |
 
 Multi-level routing is therefore a **data** property, not an algorithm one: the
 executor already knows how to climb, and gains a new route the moment an edge for it
