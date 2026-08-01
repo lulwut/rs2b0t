@@ -44,6 +44,65 @@ describe('PathFinder level-change avoidance', () => {
     });
 });
 
+describe('PathFinder transport loc metadata', () => {
+    const from = { x: 10, z: 10, level: 0 };
+    const to = { x: 10, z: 12, level: 1 };
+
+    test('propagates the exact clickable loc rather than the stand tile', () => {
+        const finder = new PathFinder(fullyWalkablePack());
+        const stair: TransportEdgeData = {
+            from,
+            to,
+            locName: 'Ladder',
+            action: 'Climb-up',
+            kind: 'stair',
+            locId: 1747,
+            locX: 11,
+            locZ: 10,
+            debugName: 'ladder',
+            options: ['Climb-up']
+        };
+        finder.addEdges([], [], [stair]);
+
+        const out = finder.findPath(from, to);
+        expect(out.ok).toBe(true);
+        if (out.ok) {
+            const transport = out.waypoints.find(waypoint => waypoint.transport)?.transport;
+            expect(transport).toMatchObject({ locId: 1747, locX: 11, locZ: 10 });
+        }
+    });
+
+    test('retains the stand-tile fallback for legacy edges', () => {
+        const finder = new PathFinder(fullyWalkablePack());
+        const stair: TransportEdgeData = { from, to, locName: 'Ladder', action: 'Climb-up', kind: 'stair' };
+        finder.addEdges([], [], [stair]);
+
+        const out = finder.findPath(from, to);
+        expect(out.ok).toBe(true);
+        if (out.ok) {
+            const transport = out.waypoints.find(waypoint => waypoint.transport)?.transport;
+            expect(transport).toMatchObject({ locX: from.x, locZ: from.z });
+            expect(transport?.locId).toBeUndefined();
+        }
+    });
+
+    test('does not compile a documented disabled edge', () => {
+        const finder = new PathFinder(fullyWalkablePack());
+        const stair: TransportEdgeData = {
+            from,
+            to,
+            locName: 'Ladder',
+            action: 'Climb-down',
+            kind: 'stair',
+            disabledReason: 'The destination has no Climb-down loc.'
+        };
+        finder.addEdges([], [], [stair]);
+
+        expect(finder.transportEdges).toBe(0);
+        expect(finder.findPath(from, to).ok).toBe(false);
+    });
+});
+
 const DX8 = [0, 1, 0, -1, 1, 1, -1, -1];
 const DZ8 = [1, 0, -1, 0, 1, -1, -1, 1];
 
@@ -119,4 +178,3 @@ describe('wall-aware goal candidates (W4)', () => {
         const out = finder.findPath({ x: 2, z: 30, level: 0 }, { x: 30, z: 30, level: 0 });
         expect(out.ok).toBe(true);
     });
-});
