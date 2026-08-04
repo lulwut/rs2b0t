@@ -443,3 +443,38 @@ describe('loc scan bounding', () => {
         expect(leashScanRadius(10, 0)).toBe(10);
     });
 });
+
+describe('loc scan memoisation', () => {
+    // findRock() is memoised per tick, so anything the script does mid-tick that
+    // changes which tiles are usable has to invalidate that memo — otherwise a
+    // tile skipped now would keep being offered until the next tick, and the
+    // immediate re-entry after a spent rock would hand back the spent rock.
+    test('cooling a tile down invalidates the memo', () => {
+        const bot = new GatheringBot();
+        const before = bot.gatherFilterEpoch();
+
+        bot.cooldown('3200,3200', 2);
+
+        expect(bot.gatherFilterEpoch()).toBeGreaterThan(before);
+    });
+
+    test('rejecting a tile invalidates the memo', () => {
+        const bot = new GatheringBot();
+        const before = bot.gatherFilterEpoch();
+
+        bot.reject('3200,3200');
+
+        expect(bot.gatherFilterEpoch()).toBeGreaterThan(before);
+    });
+
+    // reject() is idempotent, so a repeat must not churn the memo for nothing
+    test('re-rejecting the same tile does not churn the memo', () => {
+        const bot = new GatheringBot();
+        bot.reject('3200,3200');
+        const after = bot.gatherFilterEpoch();
+
+        bot.reject('3200,3200');
+
+        expect(bot.gatherFilterEpoch()).toBe(after);
+    });
+});

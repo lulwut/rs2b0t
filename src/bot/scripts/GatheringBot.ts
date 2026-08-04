@@ -380,6 +380,8 @@ export default class GatheringBot extends TaskBot {
      */
     private reenterNow: string | null = null;
 
+    private filterEpoch = 0;
+
     reenterChainNow(reason: string): void {
         this.reenterNow = reason;
     }
@@ -3430,11 +3432,22 @@ export default class GatheringBot extends TaskBot {
     reject(key: string): void {
         if (!this.rejected.has(key)) {
             this.rejected.add(key);
+            this.filterEpoch++;
             this.log(`skipping ${this.target} at ${key} (can't ${this.action.toLowerCase()} it)`);
         }
     }
     cooldown(key: string, ticks = 8): void {
         this.cooldownUntil.set(key, Game.tick() + ticks);
+        this.filterEpoch++;
+    }
+
+    /**
+     * Bumped whenever something that `usable()` consults changes. A cached loc
+     * pick is only valid while this and the tick both hold — otherwise skipping
+     * a tile would not take effect until the next tick.
+     */
+    gatherFilterEpoch(): number {
+        return this.filterEpoch;
     }
     usable(key: string): boolean {
         if (this.rejected.has(key)) {
@@ -5271,6 +5284,9 @@ class Gather implements Task {
     /** NPC index of the spot we last successfully started fishing on (null = no active session). */
     private activeFishIndex: number | null = null;
 
+    /** Memo for {@link findRock}; valid for one tick at one filter epoch. */
+    private rockCache: { tick: number; epoch: number; rock: ReturnType<Gather['scanForRock']> } | null = null;
+
     /**
      * Distance origin for ranking fishing spots (prefer nearest to player).
      * Game.tile() is a plain WorldTile — wrap with Tile.from for distanceTo.
@@ -5368,7 +5384,34 @@ class Gather implements Task {
         return this.findFishSpot();
     }
 
+    /**
+     * The current best target, scanned at most once per tick.
+     *
+     * Seven call sites ask this, several of them per loop and one per gather
+     * roll, and they were each paying a scene scan for an answer that cannot
+     * change between them. Locs move on server updates, which arrive with
+     * ticks, so a per-tick answer is the freshest one that exists — rescanning
+     * within a tick re-reads identical scene arrays.
+     *
+     * The cache is also keyed on the bot's filter epoch, because `usable()`
+     * consults cooldowns and rejects that the script itself mutates mid-tick:
+     * without that, skipping a tile would not take effect until the next tick
+     * and the very next pick could hand back the tile we just skipped.
+     */
     private findRock() {
+        const tick = Game.tick();
+        const epoch = this.bot.gatherFilterEpoch();
+        const hit = this.rockCache;
+        if (hit && hit.tick === tick && hit.epoch === epoch) {
+            return hit.rock;
+        }
+
+        const rock = this.scanForRock();
+        this.rockCache = { tick, epoch, rock };
+        return rock;
+    }
+
+    private scanForRock() {
         // Camp membership fence (anchor leash) + ore/tree type filters, then prefer
         // rocks near the player so we do not path across Dwarven tunnels / SE Varrock
         // while a matching ore is already underfoot.
@@ -5818,12 +5861,15 @@ class Gather implements Task {
                 this.bot.setStatus(`${this.bot.actionName()}: finishing`);
                 await Execution.delayUntil(
                     () =>
+                        // findRock() last: it is the only expensive term, and it is
+                        // memoised per tick, so the cheap flags short-circuit most
+                        // frames without touching a scan at all
                         !Game.animating() ||
-                        this.findRock() !== null ||
                         EventSignal.pending() ||
                         Inventory.isFull() ||
                         combatBreaksGather(Game.inCombat(), this.bot.allowCombatGather()) ||
-                        ChatDialog.canContinue(),
+                        ChatDialog.canContinue() ||
+                        this.findRock() !== null,
                     2500
                 );
                 return;
