@@ -28,6 +28,16 @@ function ingameOrDetached(): boolean {
 
 const LOGGED_OUT_POLL_MS = 600;
 
+const TICK_MS = 600;
+
+/**
+ * How far past a tick's nominal arrival a tick-cadence loop waits before giving
+ * up and running anyway. Wide enough that ordinary server lag still resolves as
+ * a real tick (so the phase win survives), short enough that a silent server
+ * costs seconds rather than StallGuard's 15 minutes.
+ */
+const TICK_STARVATION_GRACE_MS = 2400;
+
 /**
  * A random-event takeover drives its own interface timings, so it keeps the
  * wall-clock pacing it has always had rather than riding the tick.
@@ -47,8 +57,16 @@ function dueFrom(cadence: LoopCadence): LoopDue {
     switch (cadence.kind) {
         case 'frame':
             return { kind: 'frame' };
-        case 'server-tick':
-            return { kind: 'tick', dueTick: BotHost.tickCount + (cadence.ticks ?? 1) };
+        case 'server-tick': {
+            // 0 or negative would make every frame due, which is what 'frame' is
+            // for — a mistyped tick count must not silently become a 50Hz loop
+            const ticks = Math.max(1, Math.floor(cadence.ticks ?? 1));
+            return {
+                kind: 'tick',
+                dueTick: BotHost.tickCount + ticks,
+                staleAt: performance.now() + ticks * TICK_MS + TICK_STARVATION_GRACE_MS
+            };
+        }
         case 'time':
             // a 0ms delay is 'as soon as possible', which is the next frame —
             // going through the clock would leave it at the mercy of rounding

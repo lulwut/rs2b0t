@@ -18,11 +18,15 @@ interface LogLine {
 export type WaiterSpec = { kind: 'time'; dueAt: number } | { kind: 'tick'; dueTick: number } | { kind: 'cond'; cond: () => boolean; timeoutAt: number | null };
 
 /**
- * When the next `loop()` may start. Only the wall-clock variant is shifted by
- * pause/resume and frame-gap insurance — a frame or tick due date is stated in
- * the clock it is measured against, so it needs no compensation.
+ * When the next `loop()` may start.
+ *
+ * A tick due date carries `staleAt`, a wall-clock backstop. Ticks only advance
+ * on PLAYER_INFO, so a silent server — dropped socket, lag spike, or no client
+ * attached at all — would otherwise starve a tick-cadence loop indefinitely.
+ * Past `staleAt` the loop runs anyway, which is no worse than the wall-clock
+ * pacing this replaced.
  */
-export type LoopDue = { kind: 'frame' } | { kind: 'tick'; dueTick: number } | { kind: 'time'; dueAt: number };
+export type LoopDue = { kind: 'frame' } | { kind: 'tick'; dueTick: number; staleAt: number } | { kind: 'time'; dueAt: number };
 
 export type Waiter = WaiterSpec & {
     resolve: (value: boolean) => void;
@@ -105,6 +109,10 @@ export class ScriptContext {
         }
         if (this.nextLoop.kind === 'time') {
             this.nextLoop.dueAt += pausedFor;
+        } else if (this.nextLoop.kind === 'tick') {
+            // the due tick is still the right one — no ticks were consumed while
+            // paused — but its backstop must not burn down during the pause
+            this.nextLoop.staleAt += pausedFor;
         }
         this.state = 'running';
         this.progress();

@@ -147,9 +147,12 @@ if (gap > FRAME_GAP_MS) {
 }
 ```
 
-Only wall-clock deadlines are shifted. A loop due on a frame or on a server tick
-is already stated in the clock it is measured against — no ticks arrive while the
-tab is asleep either, so a tick-cadence loop self-corrects.
+A tick due date is not shifted — no ticks arrive while the tab is asleep either,
+so it self-corrects — but its starvation backstop is, or a bot resuming from a
+long sleep would find the backstop already expired and burn a loop against stale
+state. That backstop exists because `tickCount` only advances on `PLAYER_INFO`:
+a dropped socket or a silent server would otherwise freeze a tick-cadence script
+until StallGuard's 15-minute restart.
 
 Without this, a laptop lid closing for a minute would expire every outstanding
 timeout at once and each bot would conclude its actions had failed.

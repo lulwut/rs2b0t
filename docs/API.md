@@ -121,6 +121,12 @@ type LoopCadence =
 - **`time`** is for pacing deliberately unrelated to game time — backoff, or
   polling while logged out (there are no ticks to ride).
 
+A tick cadence carries a wall-clock backstop, because `BotHost.tickCount` only
+advances on `PLAYER_INFO`. If the ticks stop — dropped socket, silent server, or
+no client attached at all — the loop runs anyway a few seconds late rather than
+waiting forever. `ticks` is clamped to at least 1, so a mistyped `0` cannot
+quietly turn into a 50Hz loop; use `frame` when that is what you want.
+
 Set it on the bot, or return one from `loop()` to override the next iteration
 only:
 

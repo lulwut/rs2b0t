@@ -14,7 +14,9 @@ export function loopDue(due: LoopDue, now: number, tick: number): boolean {
         case 'frame':
             return true;
         case 'tick':
-            return tick >= due.dueTick;
+            // `staleAt` is liveness insurance, not pacing: a server that stops
+            // sending PLAYER_INFO must not freeze the script outright
+            return tick >= due.dueTick || now >= due.staleAt;
         case 'time':
             return now >= due.dueAt;
     }
@@ -70,6 +72,8 @@ class SchedulerImpl {
             }
             if (ctx.nextLoop.kind === 'time') {
                 ctx.nextLoop.dueAt += shift;
+            } else if (ctx.nextLoop.kind === 'tick') {
+                ctx.nextLoop.staleAt += shift;
             }
             ctx.progress();
             this.gapShifts++;

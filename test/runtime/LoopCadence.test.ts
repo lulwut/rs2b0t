@@ -15,12 +15,23 @@ describe('loopDue', () => {
     });
 
     test('a tick cadence waits for the observed tick counter, not the clock', () => {
-        const due: LoopDue = { kind: 'tick', dueTick: 10 };
-        // an hour of wall-clock with no tick does not make it due
-        expect(loopDue(due, 3_600_000, 9)).toBe(false);
+        const due: LoopDue = { kind: 'tick', dueTick: 10, staleAt: 3000 };
+        expect(loopDue(due, 0, 9)).toBe(false);
+        // wall-clock passing inside the grace window does not make it due
+        expect(loopDue(due, 2999, 9)).toBe(false);
         expect(loopDue(due, 0, 10)).toBe(true);
         // ticks can be missed under load; catching up late still fires
         expect(loopDue(due, 0, 14)).toBe(true);
+    });
+
+    // tickCount only advances on PLAYER_INFO. A dropped socket, a lag spike, or
+    // no client attached at all must not freeze the script until StallGuard's
+    // 15-minute restart — past the backstop it runs on stale state, exactly as
+    // the wall-clock pacing this replaced always did.
+    test('a starved tick cadence falls back to the clock', () => {
+        const due: LoopDue = { kind: 'tick', dueTick: 10, staleAt: 3000 };
+        expect(loopDue(due, 3000, 0)).toBe(true);
+        expect(loopDue(due, 10_000, 0)).toBe(true);
     });
 
     test('a time cadence waits for the clock, not for ticks', () => {
@@ -122,11 +133,25 @@ describe('pause/resume', () => {
     // the right one — shifting it would skip a tick on every resume
     test('a tick due date is left exactly where it was', () => {
         const ctx = new ScriptContext();
-        ctx.nextLoop = { kind: 'tick', dueTick: 42 };
+        ctx.nextLoop = { kind: 'tick', dueTick: 42, staleAt: performance.now() + 3000 };
 
         ctx.pause();
         ctx.resume();
 
-        expect(ctx.nextLoop).toEqual({ kind: 'tick', dueTick: 42 });
+        expect(ctx.nextLoop.kind).toBe('tick');
+        expect((ctx.nextLoop as { dueTick: number }).dueTick).toBe(42);
+    });
+
+    // otherwise a bot paused for an hour resumes with its backstop already
+    // expired and burns one loop against stale state for no reason
+    test('the tick backstop does not burn down while paused', () => {
+        const ctx = new ScriptContext();
+        const staleAt = performance.now() + 3000;
+        ctx.nextLoop = { kind: 'tick', dueTick: 42, staleAt };
+
+        ctx.pause();
+        ctx.resume();
+
+        expect((ctx.nextLoop as { staleAt: number }).staleAt).toBeGreaterThanOrEqual(staleAt);
     });
 });
