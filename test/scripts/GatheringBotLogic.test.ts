@@ -19,6 +19,7 @@ import {
     shouldYieldGathering,
     spotWithinGatherRange
 } from '#/bot/scripts/GatheringBot.js';
+import GatheringBot from '#/bot/scripts/GatheringBot.js';
 import { AXE_BAR_FOR } from '#/bot/api/ToolAcquire.js';
 import { DEFAULT_CAMP_RADIUS, resolveCampRadius, resolveChaseRadius } from '#/bot/api/GatheringLocations.js';
 import Tile from '#/bot/api/Tile.js';
@@ -387,5 +388,28 @@ describe('fishingSessionBroken', () => {
         expect(fishingSessionBroken({ ...calm, inCombat: true, allowCombat: true, spotGone: true })).toBe(true);
         expect(fishingSessionBroken({ ...calm, inCombat: true, allowCombat: true, eventPending: true })).toBe(true);
         expect(fishingSessionBroken({ ...calm, inCombat: true, allowCombat: true, inventoryFull: true })).toBe(true);
+    });
+});
+
+describe('immediate chain re-entry', () => {
+    // Gather.execute() returns within a frame of the tick that spent the rock,
+    // then loopDelay idles ~600ms before findRock() is even called. That gap is
+    // per rock and it is the visible slowness.
+    test('a decided outcome re-walks the chain on the next frame', async () => {
+        const bot = new GatheringBot();
+
+        expect(await bot.loop()).toBeUndefined();
+
+        bot.reenterChainNow('mine: rock spent');
+        expect(await bot.loop()).toBe(0);
+    });
+
+    test('the request is consumed, not sticky', async () => {
+        const bot = new GatheringBot();
+
+        bot.reenterChainNow('mine: pack full');
+        expect(await bot.loop()).toBe(0);
+        // next iteration is paced normally again
+        expect(await bot.loop()).toBeUndefined();
     });
 });

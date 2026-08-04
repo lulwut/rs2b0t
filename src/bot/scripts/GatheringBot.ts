@@ -346,6 +346,39 @@ export function fishingSessionBroken(opts: {
 export default class GatheringBot extends TaskBot {
     override loopDelay = 600;
 
+    /**
+     * Set by a task that finished on a decided outcome, to re-walk the chain on
+     * the next frame instead of idling out `loopDelay`.
+     *
+     * The gap this closes: `Gather.execute()` returns the moment a rock is spent
+     * — detected within a frame of the tick that stopped the swing — and then
+     * nothing happens for a further ~600ms before `findRock()` is even called.
+     * That dead time is per rock, and it is what the bot looks like it is doing
+     * when it looks slow.
+     *
+     * Only exits that need no fresh server state may set this. A failed click
+     * must not: re-walking immediately would re-click at frame rate.
+     */
+    private reenterNow: string | null = null;
+
+    reenterChainNow(reason: string): void {
+        this.reenterNow = reason;
+    }
+
+    override async loop(): Promise<number | void> {
+        const returned = await super.loop();
+        const reason = this.reenterNow;
+        this.reenterNow = null;
+
+        // an explicit delay from the task wins — it asked for that pacing
+        if (reason !== null && returned === undefined) {
+            this.log(`re-entering chain now (${reason})`);
+            return 0;
+        }
+
+        return returned;
+    }
+
     private anchor: Tile | null = null;
     private gathered = 0;
     private gems = 0;
@@ -5819,6 +5852,11 @@ class Gather implements Task {
                 if (this.gasAt(tile)) {
                     await this.fleeGas(key, tile);
                 }
+                // A full pack is a decided outcome: banking/dropping is the next
+                // task and it needs no fresh server state to start.
+                if (Inventory.isFull()) {
+                    this.bot.reenterChainNow('mine: pack full');
+                }
                 return;
             }
             const mark = Inventory.used();
@@ -5841,6 +5879,12 @@ class Gather implements Task {
                 // Natural end (deplete / stop). Never soft-cooldown here — empty/stump
                 // already drops out of findRock, and iron respawns faster than the old
                 // 8t tile skip (nearby ore up while bot paths across the mine).
+                if (gotProduct) {
+                    // This rock produced and is now spent. The next rock is pickable
+                    // from state we already hold; waiting out loopDelay here is the
+                    // visible dead time between rocks.
+                    this.bot.reenterChainNow('mine: rock spent');
+                }
                 return;
             }
         }
