@@ -11,6 +11,7 @@ import { TaskBot, type Task } from '../api/Bot.js';
 import { EventSignal } from '../api/EventSignal.js';
 import { Execution } from '../api/Execution.js';
 import { Game } from '../api/Game.js';
+import type { LoopCadence } from '../api/LoopCadence.js';
 import Tile from '../api/Tile.js';
 import type { Npc } from '../api/entities/index.js';
 import { Bank, withdrawOp } from '../api/hud/Bank.js';
@@ -343,8 +344,27 @@ export function fishingSessionBroken(opts: {
     );
 }
 
+/**
+ * The task chain re-walks once per server tick.
+ *
+ * Every task here ends on a server-confirmed change — an inventory delta, a
+ * bank that closed, a combat cycle that drained — so the next decision has
+ * nothing to gain from waking before the tick that carries the next one. The
+ * old `loopDelay = 600` ran at this same rate but free-running, which put the
+ * re-walk at a random offset into the tick; riding the tick removes that offset
+ * without changing how often the chain runs.
+ *
+ * Deliberately not `frame`. The sub-tick reactions in this script — the mining
+ * swing watching for its ore, the fishing session watching its catch — already
+ * live in `Execution.delayUntil` inside the tasks, which settles on the frame
+ * pump. Re-walking the whole chain every frame would buy those nothing and risk
+ * re-entering a task that has already clicked.
+ * @see docs/API.md#loop-cadence
+ */
+export const GATHER_CADENCE: LoopCadence = { kind: 'server-tick', ticks: 1 };
+
 export default class GatheringBot extends TaskBot {
-    override loopDelay = 600;
+    override cadence = GATHER_CADENCE;
 
     private anchor: Tile | null = null;
     private gathered = 0;
@@ -3537,6 +3557,14 @@ class TannerfishSustain implements Task {
  * Lets burn/gather resume once the cycle drains instead of deadlocking the loop.
  */
 class WaitStickyCombat implements Task {
+    /**
+     * This task ends the moment combat clears, and the only reason it was
+     * blocking gathering was that combat. Waiting for the next tick to re-walk
+     * the chain would sit idle for up to a tick after the thing it was waiting
+     * on already happened — so re-walk on the next frame instead.
+     */
+    readonly cadence: LoopCadence = { kind: 'frame' };
+
     constructor(private bot: GatheringBot) {}
 
     validate(): boolean {

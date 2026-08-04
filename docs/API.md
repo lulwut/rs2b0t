@@ -154,11 +154,17 @@ returns true has its `execute()` run.
 interface Task {
     validate(): boolean | Promise<boolean>;
     execute(): void | Promise<void>;
+    cadence?: LoopCadence;             // cadence for the iteration this task ran
 }
 abstract class TaskBot extends LoopingBot {
     protected add(...tasks: Task[]): void; // usually in onStart, highest priority first
 }
 ```
+
+A task that ends the moment the thing it was waiting on happened can set
+`cadence` so the chain is re-walked straight away, instead of idling until the
+bot's own cadence comes round. Only the task that actually ran can set it — see
+`WaitStickyCombat` in `src/bot/scripts/GatheringBot.ts` for the worked case.
 
 ```ts
 class Fighter extends TaskBot {

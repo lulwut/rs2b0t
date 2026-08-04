@@ -83,6 +83,8 @@ export abstract class LoopingBot extends AbstractBot {
 export interface Task {
     validate(): boolean | Promise<boolean>;
     execute(): void | Promise<void>;
+    /** Cadence for the iteration this task ran; omit to use the bot's. */
+    cadence?: LoopCadence;
 }
 
 /**
@@ -97,11 +99,13 @@ export abstract class TaskBot extends LoopingBot {
         this.tasks.push(...tasks);
     }
 
-    async loop(): Promise<number | void> {
+    async loop(): Promise<LoopCadence | number | void> {
         for (const task of this.tasks) {
             if (await task.validate()) {
                 await task.execute();
-                return;
+                // a task may state how soon the chain should be re-walked after
+                // it — a task that just armed something wants a tighter look
+                return task.cadence;
             }
         }
     }
@@ -130,7 +134,7 @@ export type TreeNode = BranchTask | LeafTask;
 export abstract class TreeBot extends LoopingBot {
     abstract root(): TreeNode;
 
-    async loop(): Promise<number | void> {
+    async loop(): Promise<LoopCadence | number | void> {
         let node = this.root();
         while (node instanceof BranchTask) {
             node = node.validate() ? node.success() : node.failure();

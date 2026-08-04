@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { LoopingBot } from '#/bot/api/Bot.js';
+import { LoopingBot, TaskBot, type Task } from '#/bot/api/Bot.js';
 import { PER_TICK, asCadence, type LoopCadence } from '#/bot/api/LoopCadence.js';
 import { loopDue } from '#/bot/runtime/Scheduler.js';
 import { ScriptContext, type LoopDue } from '#/bot/runtime/ScriptContext.js';
@@ -55,6 +55,53 @@ describe('bot defaults', () => {
         const bot = new Plain();
         expect(bot.cadence).toEqual({ kind: 'server-tick', ticks: 1 });
         expect(bot.loopDelay).toBeNull();
+    });
+});
+
+describe('TaskBot cadence', () => {
+    class Probe extends TaskBot {
+        ran: string[] = [];
+
+        constructor(...tasks: (Task & { name: string })[]) {
+            super();
+            this.add(
+                ...tasks.map(t => ({
+                    ...t,
+                    execute: () => {
+                        this.ran.push(t.name);
+                    }
+                }))
+            );
+        }
+    }
+
+    test('the executed task states the cadence for its iteration', async () => {
+        const bot = new Probe({
+            name: 'urgent',
+            validate: () => true,
+            execute: () => {},
+            cadence: { kind: 'frame' }
+        });
+
+        expect(await bot.loop()).toEqual({ kind: 'frame' });
+        expect(bot.ran).toEqual(['urgent']);
+    });
+
+    test('a task with no cadence falls through to the bot cadence', async () => {
+        const bot = new Probe({ name: 'plain', validate: () => true, execute: () => {} });
+
+        expect(asCadence(await bot.loop(), bot.cadence)).toBe(bot.cadence);
+    });
+
+    // only the first passing task runs, so only its cadence can apply
+    test('a skipped task cannot set the cadence', async () => {
+        const bot = new Probe(
+            { name: 'skipped', validate: () => false, execute: () => {}, cadence: { kind: 'frame' } },
+            { name: 'ran', validate: () => true, execute: () => {} }
+        );
+
+        expect(await bot.loop()).toBeUndefined();
+        expect(bot.ran).toEqual(['ran']);
     });
 });
 

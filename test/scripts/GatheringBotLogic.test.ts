@@ -17,7 +17,8 @@ import {
     shouldSoftHomeFromGatherMiss,
     shouldWalkHomeToGatherAnchor,
     shouldYieldGathering,
-    spotWithinGatherRange
+    spotWithinGatherRange,
+    GATHER_CADENCE
 } from '#/bot/scripts/GatheringBot.js';
 import { AXE_BAR_FOR } from '#/bot/api/ToolAcquire.js';
 import { DEFAULT_CAMP_RADIUS, resolveCampRadius, resolveChaseRadius } from '#/bot/api/GatheringLocations.js';
@@ -387,5 +388,13 @@ describe('fishingSessionBroken', () => {
         expect(fishingSessionBroken({ ...calm, inCombat: true, allowCombat: true, spotGone: true })).toBe(true);
         expect(fishingSessionBroken({ ...calm, inCombat: true, allowCombat: true, eventPending: true })).toBe(true);
         expect(fishingSessionBroken({ ...calm, inCombat: true, allowCombat: true, inventoryFull: true })).toBe(true);
+    });
+});
+
+describe('loop cadence', () => {
+    // The chain used to re-walk on a free-running 600ms timer, which landed at a
+    // random offset into the tick it was really waiting for.
+    test('the task chain rides the server tick', () => {
+        expect(GATHER_CADENCE).toEqual({ kind: 'server-tick', ticks: 1 });
     });
 });

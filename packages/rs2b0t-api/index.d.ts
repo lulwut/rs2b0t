@@ -881,6 +881,8 @@ export abstract class LoopingBot extends AbstractBot {
 export interface Task {
     validate(): boolean | Promise<boolean>;
     execute(): void | Promise<void>;
+    /** Cadence for the iteration this task ran; omit to use the bot's. */
+    cadence?: LoopCadence;
 }
 
 // ---- item acquisition ----
