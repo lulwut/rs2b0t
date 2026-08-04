@@ -9,8 +9,13 @@ import EntityQuery from './Query.js';
  * @see docs/NAV.md#level-change-loc-lag
  */
 export const Locs = {
-    query(): EntityQuery<Loc> {
-        return new EntityQuery(() => reader.locs().map(s => new Loc(s)));
+    /**
+     * @param maxDistance only scan tiles within this many tiles (chebyshev) of
+     * the player. The underlying scan is O(scene) and uncached, so a query that
+     * only cares about nearby scenery should bound it — see `reader.locs`.
+     */
+    query(maxDistance?: number): EntityQuery<Loc> {
+        return new EntityQuery(() => reader.locs(maxDistance).map(s => new Loc(s)));
     }
 };
 

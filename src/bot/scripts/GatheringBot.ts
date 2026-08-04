@@ -183,6 +183,25 @@ import {
 /** Default half-size of the Auto (start) burn box around the script start tile. */
 const LOCAL_BURN_HALF = 8;
 
+/**
+ * How long a just-spent rock is skipped for. Only long enough to cover the
+ * frame or two before the client processes the loc change, since re-entry now
+ * happens immediately. Well under an iron respawn (~6t), so it does not
+ * reintroduce the tile-skip thrash the old 8-tick cooldown caused.
+ */
+const SPENT_ROCK_SKIP_TICKS = 2;
+
+/**
+ * How far from the *player* a loc scan must reach to be sure it still contains
+ * every tile inside the leash — which is a disk around the *anchor*, not the
+ * player. Chebyshev obeys the triangle inequality, so any tile within `leash`
+ * of the anchor is within `leash + anchorToPlayer` of the player. Bounding the
+ * scan by this cannot drop a candidate the leash filter would have kept.
+ */
+export function leashScanRadius(leash: number, anchorToPlayer: number): number {
+    return leash + anchorToPlayer;
+}
+
 // Re-export pure policy from api/ so existing `#/bot/scripts/GatheringBot` imports keep working.
 export {
     HOME_ARRIVE_RADIUS,
@@ -5353,7 +5372,14 @@ class Gather implements Task {
         // Camp membership fence (anchor leash) + ore/tree type filters, then prefer
         // rocks near the player so we do not path across Dwarven tunnels / SE Varrock
         // while a matching ore is already underfoot.
-        return Locs.query()
+        //
+        // The leash disk is centred on the *anchor*, so from the player it reaches
+        // as far as the anchor is away plus the leash itself. Scanning that window
+        // instead of the whole scene cannot drop a candidate the filter would have
+        // kept, and standing on camp it is a ~21x21 window rather than 104x104.
+        const here = Game.tile();
+        const radius = here ? leashScanRadius(this.bot.leashRadius(), this.bot.getAnchor().distanceTo(here)) : undefined;
+        return Locs.query(radius)
             .name(this.bot.targetName())
             .action(this.bot.actionName())
             .where(
@@ -5419,8 +5445,11 @@ class Gather implements Task {
     }
 
     private gasAt(t: Tile): boolean {
+        // One tile's worth of question — do not scan the scene to answer it.
+        const here = Game.tile();
+        const radius = here ? t.distanceTo(here) : undefined;
         return (
-            Locs.query()
+            Locs.query(radius)
                 .where(l => {
                     const lt = l.tile();
                     return lt.x === t.x && lt.z === t.z && GAS_ROCK_IDS.has(l.id);
@@ -5452,15 +5481,29 @@ class Gather implements Task {
         });
     }
 
-    private shouldYieldMine(tile: Tile): boolean {
+    /**
+     * The part of the yield test that is cheap enough to sit in a `delayUntil`
+     * condition, which the scheduler re-evaluates on every frame.
+     *
+     * `findRock()` is deliberately not here. It is a scene scan, and asking
+     * "is there any other rock in the leash" 50 times a second while swinging
+     * at one answers a question nothing is waiting on: when the rock we are
+     * actually mining runs out, `!Game.animating()` ends the wait anyway.
+     */
+    private shouldInterruptMine(tile: Tile): boolean {
         return shouldYieldGathering(
             EventSignal.pending(),
             Inventory.isFull(),
             ChatDialog.canContinue(),
-            this.findRock() === null || this.gasAt(tile),
+            this.gasAt(tile),
             Game.inCombat(),
             this.bot.allowCombatGather()
         );
+    }
+
+    /** Full test, including "is there anything left to mine". Once per session beat. */
+    private shouldYieldMine(tile: Tile): boolean {
+        return this.shouldInterruptMine(tile) || this.findRock() === null;
     }
 
     private async fleeGas(key: string, tile: Tile): Promise<void> {
@@ -5821,7 +5864,7 @@ class Gather implements Task {
             }
 
             await Execution.delayUntil(
-                () => Inventory.used() > before || Game.animating() || this.shouldYieldMine(tile),
+                () => Inventory.used() > before || Game.animating() || this.shouldInterruptMine(tile),
                 12000
             );
             if (this.gasAt(tile)) {
@@ -5861,7 +5904,7 @@ class Gather implements Task {
             }
             const mark = Inventory.used();
             await Execution.delayUntil(
-                () => Inventory.used() > mark || !Game.animating() || this.shouldYieldMine(tile),
+                () => Inventory.used() > mark || !Game.animating() || this.shouldInterruptMine(tile),
                 8000
             );
             if (this.gasAt(tile)) {
@@ -5883,6 +5926,14 @@ class Gather implements Task {
                     // This rock produced and is now spent. The next rock is pickable
                     // from state we already hold; waiting out loopDelay here is the
                     // visible dead time between rocks.
+                    //
+                    // Re-entry lands on the next frame, which can be before the
+                    // client has processed the loc change for the spent rock — so
+                    // findRock() may still offer this very tile. Skip it briefly.
+                    // This is not the 8-tick soft cooldown the old comment warns
+                    // off: two ticks is under an iron respawn, so the fast-respawn
+                    // behaviour that comment protects is untouched.
+                    this.bot.cooldown(key, SPENT_ROCK_SKIP_TICKS);
                     this.bot.reenterChainNow('mine: rock spent');
                 }
                 return;

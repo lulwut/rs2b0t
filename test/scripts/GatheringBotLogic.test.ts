@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import {
+import GatheringBot, {
     DEFAULT_CHASE_RADIUS,
     HOME_ARRIVE_RADIUS,
     LOCAL_MINE_PREFER_RADIUS,
@@ -17,9 +17,9 @@ import {
     shouldSoftHomeFromGatherMiss,
     shouldWalkHomeToGatherAnchor,
     shouldYieldGathering,
-    spotWithinGatherRange
+    spotWithinGatherRange,
+    leashScanRadius
 } from '#/bot/scripts/GatheringBot.js';
-import GatheringBot from '#/bot/scripts/GatheringBot.js';
 import { AXE_BAR_FOR } from '#/bot/api/ToolAcquire.js';
 import { DEFAULT_CAMP_RADIUS, resolveCampRadius, resolveChaseRadius } from '#/bot/api/GatheringLocations.js';
 import Tile from '#/bot/api/Tile.js';
@@ -411,5 +411,35 @@ describe('immediate chain re-entry', () => {
         expect(await bot.loop()).toBe(0);
         // next iteration is paced normally again
         expect(await bot.loop()).toBeUndefined();
+    });
+});
+
+describe('loc scan bounding', () => {
+    // The leash disk is centred on the anchor, but the scan is bounded from the
+    // player. If the radius were just the leash, wandering off camp would start
+    // silently dropping rocks the filter would have kept.
+    test('the scan radius always covers the whole leash disk', () => {
+        const leash = 10;
+        const anchor = new Tile(3200, 3200, 0);
+
+        for (let dx = -40; dx <= 40; dx += 7) {
+            for (let dz = -40; dz <= 40; dz += 7) {
+                const player = new Tile(anchor.x + dx, anchor.z + dz, 0);
+                const radius = leashScanRadius(leash, anchor.distanceTo(player));
+
+                // every tile the leash filter would accept must be inside the scan
+                for (let tx = -leash; tx <= leash; tx += 5) {
+                    for (let tz = -leash; tz <= leash; tz += 5) {
+                        const tile = new Tile(anchor.x + tx, anchor.z + tz, 0);
+                        expect(anchor.distanceTo(tile)).toBeLessThanOrEqual(leash);
+                        expect(player.distanceTo(tile)).toBeLessThanOrEqual(radius);
+                    }
+                }
+            }
+        }
+    });
+
+    test('standing on the anchor the radius is just the leash', () => {
+        expect(leashScanRadius(10, 0)).toBe(10);
     });
 });
