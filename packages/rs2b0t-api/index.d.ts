@@ -815,13 +815,29 @@ export interface SettingsBag {
 }
 
 /**
+ * How soon a script's `loop()` becomes eligible to run again. `server-tick`
+ * rides the observed tick counter; `frame` reacts inside a tick; `time` is
+ * wall-clock pacing deliberately unrelated to game time.
+ * @see docs/API.md#loop-cadence
+ */
+export type LoopCadence = { kind: 'frame' } | { kind: 'server-tick'; ticks?: number } | { kind: 'time'; ms: number };
+
+/**
  * Base class for every bot. Usually extended via `LoopingBot`, `TaskBot`, or
  * `TreeBot` rather than directly.
  * @see docs/API.md#bot-base-classes
  */
 export abstract class AbstractBot {
-    /** Wall-clock ms between loop() iterations when loop() returns void. */
-    loopDelay: number;
+    /**
+     * When loop() may run again, when loop() returns nothing. Defaults to once
+     * per server tick.
+     */
+    cadence: LoopCadence;
+    /**
+     * @deprecated Wall-clock ms between loop() iterations. Set `cadence`
+     * instead; this still overrides it while set, so old scripts keep pacing.
+     */
+    loopDelay: number | null;
     /** Resolved parameters for this run; read e.g. this.settings.bool('x'). */
     readonly settings: SettingsBag;
     onStart?(): void | Promise<void>;
@@ -854,8 +870,8 @@ export abstract class AbstractBot {
  * @see docs/API.md#loopingbot
  */
 export abstract class LoopingBot extends AbstractBot {
-    /** Return a number to override loopDelay for the next iteration. */
-    abstract loop(): number | void | Promise<number | void>;
+    /** Return a cadence (or legacy ms) to override `cadence` for one iteration. */
+    abstract loop(): LoopCadence | number | void | Promise<LoopCadence | number | void>;
 }
 
 /**

@@ -1,5 +1,7 @@
 import { reader } from '../adapter/ClientAdapter.js';
+import { BotHost } from '../BotHost.js';
 import type { AbstractBot } from '../api/Bot.js';
+import { asCadence, type LoopCadence } from '../api/LoopCadence.js';
 import { Execution } from '../api/Execution.js';
 import { RandomEvents } from '../api/RandomEvents.js';
 import { Sustain } from '../api/Sustain.js';
@@ -8,7 +10,7 @@ import { paintState } from '../api/hud/paintLogic.js';
 import { ActionRouter } from '../input/ActionRouter.js';
 import { RecoveryHints } from './RecoveryHints.js';
 import { Scheduler } from './Scheduler.js';
-import { ScriptAborted, ScriptContext } from './ScriptContext.js';
+import { ScriptAborted, ScriptContext, type LoopDue } from './ScriptContext.js';
 import type { ScriptMeta } from './ScriptRegistry.js';
 import { SettingsBag, SettingsStore } from './Settings.js';
 import { Supervisor } from './Supervisor.js';
@@ -22,6 +24,36 @@ import { Supervisor } from './Supervisor.js';
  */
 function ingameOrDetached(): boolean {
     return !reader.attached() || (reader.ingame() && reader.sceneState() === 2 && reader.worldTile() !== null);
+}
+
+const LOGGED_OUT_POLL_MS = 600;
+
+/**
+ * A random-event takeover drives its own interface timings, so it keeps the
+ * wall-clock pacing it has always had rather than riding the tick.
+ */
+const TAKEOVER_CADENCE: LoopCadence = { kind: 'time', ms: 600 };
+
+/**
+ * `loopDelay` outranks `cadence` when a script still sets it, so scripts that
+ * have not been migrated keep byte-for-byte their old pacing.
+ */
+function botCadence(bot: AbstractBot): LoopCadence {
+    return bot.loopDelay === null ? bot.cadence : { kind: 'time', ms: bot.loopDelay };
+}
+
+/** Resolve a cadence against the clock it is measured in, once, at loop end. */
+function dueFrom(cadence: LoopCadence): LoopDue {
+    switch (cadence.kind) {
+        case 'frame':
+            return { kind: 'frame' };
+        case 'server-tick':
+            return { kind: 'tick', dueTick: BotHost.tickCount + (cadence.ticks ?? 1) };
+        case 'time':
+            // a 0ms delay is 'as soon as possible', which is the next frame —
+            // going through the clock would leave it at the mercy of rounding
+            return cadence.ms <= 0 ? { kind: 'frame' } : { kind: 'time', dueAt: performance.now() + cadence.ms };
+    }
 }
 
 class ScriptRunnerImpl {
@@ -101,7 +133,7 @@ class ScriptRunnerImpl {
                 if (RecoveryHints.pendingRecovery) {
                     RecoveryHints.clear();
                 }
-                ctx.nextLoopAt = 0;
+                ctx.nextLoop = { kind: 'frame' };
                 ctx.progress();
             })
             .catch(err => this.settleFailure(ctx, err));
@@ -177,7 +209,8 @@ class ScriptRunnerImpl {
             }
             // deliberate wait, not a stall: keep StallGuard from churn-restarting
             ctx.progress();
-            ctx.nextLoopAt = performance.now() + 600;
+            // wall-clock on purpose — logged out there are no ticks to ride
+            ctx.nextLoop = { kind: 'time', dueAt: performance.now() + LOGGED_OUT_POLL_MS };
             return;
         }
         if (this.loggedOutSince > 0) {
@@ -188,14 +221,14 @@ class ScriptRunnerImpl {
         const takeover = Supervisor.intercept(ctx, bot);
 
         ctx.loopInFlight = true;
-        (async (): Promise<number | void> => {
+        (async (): Promise<LoopCadence | number | void> => {
             if (takeover) {
                 await takeover.run();
                 return;
             }
-            return (bot as AbstractBot & { loop(): number | void | Promise<number | void> }).loop();
+            return (bot as AbstractBot & { loop(): LoopCadence | number | void | Promise<LoopCadence | number | void> }).loop();
         })()
-            .then(delay => {
+            .then(returned => {
                 ctx.loopInFlight = false;
                 ctx.loopCount++;
                 ctx.progress();
@@ -205,7 +238,7 @@ class ScriptRunnerImpl {
                     return;
                 }
 
-                ctx.nextLoopAt = performance.now() + (takeover ? 600 : typeof delay === 'number' ? delay : bot.loopDelay);
+                ctx.nextLoop = dueFrom(takeover ? TAKEOVER_CADENCE : asCadence(returned, botCadence(bot)));
             })
             .catch(err => this.settleFailure(ctx, err));
     }

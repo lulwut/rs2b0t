@@ -17,6 +17,13 @@ interface LogLine {
 
 export type WaiterSpec = { kind: 'time'; dueAt: number } | { kind: 'tick'; dueTick: number } | { kind: 'cond'; cond: () => boolean; timeoutAt: number | null };
 
+/**
+ * When the next `loop()` may start. Only the wall-clock variant is shifted by
+ * pause/resume and frame-gap insurance — a frame or tick due date is stated in
+ * the clock it is measured against, so it needs no compensation.
+ */
+export type LoopDue = { kind: 'frame' } | { kind: 'tick'; dueTick: number } | { kind: 'time'; dueAt: number };
+
 export type Waiter = WaiterSpec & {
     resolve: (value: boolean) => void;
     reject: (err: Error) => void;
@@ -29,7 +36,7 @@ export class ScriptContext {
     waiters: Waiter[] = [];
 
     loopInFlight = false;
-    nextLoopAt = 0;
+    nextLoop: LoopDue = { kind: 'frame' };
     loopCount = 0;
 
     lastProgressAt = performance.now();
@@ -96,7 +103,9 @@ export class ScriptContext {
                 waiter.timeoutAt += pausedFor;
             }
         }
-        this.nextLoopAt += pausedFor;
+        if (this.nextLoop.kind === 'time') {
+            this.nextLoop.dueAt += pausedFor;
+        }
         this.state = 'running';
         this.progress();
     }

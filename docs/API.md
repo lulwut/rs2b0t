@@ -70,7 +70,8 @@ All bots extend `AbstractBot` (usually via `LoopingBot`, `TaskBot`, or
 
 ```ts
 abstract class AbstractBot {
-    loopDelay: number;                 // wall-clock ms between loop() iterations
+    cadence: LoopCadence;              // when loop() may run again (default: once per tick)
+    loopDelay: number | null;          // deprecated; wall-clock ms, overrides cadence when set
     readonly settings: SettingsBag;    // resolved run parameters
 
     onStart?(): void | Promise<void>;  // before the first loop
@@ -88,14 +89,59 @@ abstract class AbstractBot {
 - Event callbacks (`this.on`) fire mid-frame: set flags / `log`, do real work in
   `loop()`.
 
+### Loop cadence
+
+The scheduler pumps on every client frame, so a cadence gates the loop *body*,
+not the pump — a tighter cadence costs script work, never scheduler work.
+
+```ts
+type LoopCadence =
+    | { kind: 'frame' }                       // next client frame (~20ms)
+    | { kind: 'server-tick'; ticks?: number }  // once the tick counter advances (default 1)
+    | { kind: 'time'; ms: number };            // wall-clock
+```
+
+- **`server-tick` is the default and what most scripts want.** It fires at the
+  same rate the old `loopDelay = 600` did, but it is woken by the tick itself,
+  so the loop wakes at the *start* of a tick instead of a free-running offset
+  into it — 300ms of average phase error, for free.
+- **`frame`** is for reacting inside a tick: an XP drop confirming a resource
+  roll, a hitsplat, an interface that just opened. Costs ~30× the invocations,
+  so keep the loop body a cheap guard chain.
+- **`time`** is for pacing deliberately unrelated to game time — backoff, or
+  polling while logged out (there are no ticks to ride).
+
+Set it on the bot, or return one from `loop()` to override the next iteration
+only:
+
+```ts
+class MinerBot extends LoopingBot {
+    override cadence: LoopCadence = { kind: 'server-tick' };
+
+    loop(): LoopCadence | void {
+        if (this.swinging) {
+            return { kind: 'frame' }; // watch for the XP drop that ends the swing
+        }
+    }
+}
+```
+
+Never express a cadence as a count of frames. Frame duration is the client's
+`deltime`, which has been changed before; anything counting frames silently
+encodes the current frame rate and breaks when it moves.
+
+`loopDelay` is the deprecated predecessor. It still works and still wins over
+`cadence` when a script sets it, so unmigrated scripts keep their exact pacing;
+new scripts should not use it.
+
 ### LoopingBot
 
-The common case: implement `loop()`. Return a number to override `loopDelay` for
-the next iteration.
+The common case: implement `loop()`. Return a `LoopCadence` (or a number of ms)
+to override the bot's `cadence` for the next iteration.
 
 ```ts
 abstract class LoopingBot extends AbstractBot {
-    abstract loop(): number | void | Promise<number | void>;
+    abstract loop(): LoopCadence | number | void | Promise<LoopCadence | number | void>;
 }
 ```
 

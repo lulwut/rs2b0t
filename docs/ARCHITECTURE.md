@@ -143,9 +143,13 @@ pending deadline is pushed forward by the gap:
 if (gap > FRAME_GAP_MS) {
     const shift = gap - NOMINAL_FRAME_MS;
     for (const waiter of ctx.waiters) { /* dueAt / timeoutAt += shift */ }
-    ctx.nextLoopAt += shift;
+    if (ctx.nextLoop.kind === 'time') { ctx.nextLoop.dueAt += shift; }
 }
 ```
+
+Only wall-clock deadlines are shifted. A loop due on a frame or on a server tick
+is already stated in the clock it is measured against — no ticks arrive while the
+tab is asleep either, so a tick-cadence loop self-corrects.
 
 Without this, a laptop lid closing for a minute would expire every outstanding
 timeout at once and each bot would conclude its actions had failed.

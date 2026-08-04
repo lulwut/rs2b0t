@@ -1,5 +1,6 @@
 import { bus, type EventMap } from '../events/EventBus.js';
 import { SettingsBag } from '../runtime/Settings.js';
+import { PER_TICK, type LoopCadence } from './LoopCadence.js';
 import type Tile from './Tile.js';
 
 /**
@@ -7,7 +8,22 @@ import type Tile from './Tile.js';
  * @see docs/API.md#bot-base-classes
  */
 export abstract class AbstractBot {
-    loopDelay = 600;
+    /**
+     * How soon `loop()` may run again. Defaults to once per server tick: the
+     * same rate the old 600ms default ran at, but woken by the tick itself
+     * rather than a timer that drifts against it.
+     * @see docs/API.md#loop-cadence
+     */
+    cadence: LoopCadence = PER_TICK;
+
+    /**
+     * @deprecated Wall-clock ms between iterations. Set `cadence` instead —
+     * `loopDelay = 600` is `{ kind: 'server-tick' }` with worse phase, and
+     * `loopDelay = 0` is `{ kind: 'frame' }`. Left `null` so a script that
+     * never mentions it gets the tick cadence; any number set here still wins,
+     * so unmigrated scripts keep their exact current pacing.
+     */
+    loopDelay: number | null = null;
 
     settings: SettingsBag = new SettingsBag({});
 
@@ -52,11 +68,12 @@ export abstract class AbstractBot {
 }
 
 /**
- * Implement `loop()`; it runs repeatedly with `loopDelay` between iterations.
+ * Implement `loop()`; it runs repeatedly at the bot's `cadence`. Return a
+ * cadence to override it for the next iteration only.
  * @see docs/API.md#loopingbot
  */
 export abstract class LoopingBot extends AbstractBot {
-    abstract loop(): number | void | Promise<number | void>;
+    abstract loop(): LoopCadence | number | void | Promise<LoopCadence | number | void>;
 }
 
 /**

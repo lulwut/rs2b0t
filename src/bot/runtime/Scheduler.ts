@@ -1,9 +1,24 @@
 import { BotHost } from '../BotHost.js';
-import { ScriptAborted, ScriptContext, type Waiter, type WaiterSpec } from './ScriptContext.js';
+import { ScriptAborted, ScriptContext, type LoopDue, type Waiter, type WaiterSpec } from './ScriptContext.js';
 
 const WATCHDOG_MS = 10000;
 const FRAME_GAP_MS = 1500;
 const NOMINAL_FRAME_MS = 20;
+
+/**
+ * A frame cadence is due whenever the pump runs — the pump *is* the frame.
+ * @see docs/API.md#loop-cadence
+ */
+export function loopDue(due: LoopDue, now: number, tick: number): boolean {
+    switch (due.kind) {
+        case 'frame':
+            return true;
+        case 'tick':
+            return tick >= due.dueTick;
+        case 'time':
+            return now >= due.dueAt;
+    }
+}
 
 // docs/ARCHITECTURE.md#frame-gap-insurance
 class SchedulerImpl {
@@ -53,7 +68,9 @@ class SchedulerImpl {
                     waiter.timeoutAt += shift;
                 }
             }
-            ctx.nextLoopAt += shift;
+            if (ctx.nextLoop.kind === 'time') {
+                ctx.nextLoop.dueAt += shift;
+            }
             ctx.progress();
             this.gapShifts++;
             ctx.addLog('warn', `frame gap of ${(gap / 1000).toFixed(1)}s (throttled tab or system sleep) — shifted timers to compensate`);
@@ -70,7 +87,7 @@ class SchedulerImpl {
         }
         ctx.waiters = still;
 
-        if (!ctx.loopInFlight && now >= ctx.nextLoopAt && this.launchLoop) {
+        if (!ctx.loopInFlight && loopDue(ctx.nextLoop, now, tick) && this.launchLoop) {
             ctx.progress();
             this.launchLoop(ctx);
         }
