@@ -102,9 +102,19 @@ type LoopCadence =
 ```
 
 - **`server-tick` is the default and what most scripts want.** It fires at the
-  same rate the old `loopDelay = 600` did, but it is woken by the tick itself,
-  so the loop wakes at the *start* of a tick instead of a free-running offset
-  into it — 300ms of average phase error, for free.
+  same rate the old `loopDelay = 600` did, but it is woken by the tick itself.
+
+  It is worth being precise about why that matters, because 600ms *is* a tick
+  and the old default looks equivalent. A loop normally ends just after a tick
+  (that is what it was waiting for), so a 600ms timer re-arms roughly onto the
+  next one — with perfectly regular ticks it would land ~20ms late and there
+  would be nothing to fix. But server ticks are 600ms *plus* delay; they are
+  never faster. So the timer fires just **before** the tick it wanted, walks the
+  chain against unchanged state, and re-arms 600ms from that early point. Now it
+  is desynchronised, and it wanders further every round until it sits uniformly
+  across the tick: simulated at 20ms of jitter, reaction latency is ~290ms mean
+  and ~540ms p90, against one frame for a tick cadence. Riding the tick cannot
+  drift, because the tick is the thing being waited on.
 - **`frame`** is for reacting inside a tick: an XP drop confirming a resource
   roll, a hitsplat, an interface that just opened. Costs ~30× the invocations,
   so keep the loop body a cheap guard chain.
