@@ -15,6 +15,21 @@ import { SELF_TEST, type RawClient } from './RawClient.js';
 const SCENE_SIZE = 104;
 const SCRATCH_SLOT = 499;
 
+/**
+ * Inclusive scene-coordinate range to scan on one axis: the whole axis when no
+ * bound is given, else a window of `maxDistance` either side of the player,
+ * clamped to the scene. Chebyshev distance is per-axis, so bounding each axis
+ * independently is exactly a chebyshev disk.
+ */
+export function scanBounds(player: number, maxDistance?: number): [number, number] {
+    if (maxDistance === undefined || !Number.isFinite(maxDistance)) {
+        return [0, SCENE_SIZE - 1];
+    }
+
+    const d = Math.max(0, Math.floor(maxDistance));
+    return [Math.max(0, player - d), Math.min(SCENE_SIZE - 1, player + d)];
+}
+
 let raw: RawClient | null = null;
 let packetListener: ((ptype: number) => void) | null = null;
 
@@ -677,18 +692,32 @@ export const reader = {
         return raw?.localPlayer ? combatShowing(raw.localPlayer.combatCycle) : false;
     },
 
-    locs(): LocSnapshot[] {
+    /**
+     * Every loc in the scene, or — with `maxDistance` — only those within that
+     * many tiles (chebyshev) of the player.
+     *
+     * The scan is O(scene): 104x104 tiles x 4 typecodes, rebuilt per call and
+     * not cached. Callers that only care about what is near the player should
+     * say so; a leash-sized window is ~25x less work than the full scene, and
+     * the bound is on the scanned tiles, not applied as a filter afterwards.
+     */
+    locs(maxDistance?: number): LocSnapshot[] {
         const out: LocSnapshot[] = [];
         if (!raw || !raw.world || !raw.localPlayer) {
             return out;
         }
 
         const level = raw.minusedlevel;
-        const px = raw.mapBuildBaseX + (raw.localPlayer.x >> 7);
-        const pz = raw.mapBuildBaseZ + (raw.localPlayer.z >> 7);
+        const plx = raw.localPlayer.x >> 7;
+        const plz = raw.localPlayer.z >> 7;
+        const px = raw.mapBuildBaseX + plx;
+        const pz = raw.mapBuildBaseZ + plz;
 
-        for (let lx = 0; lx < SCENE_SIZE; lx++) {
-            for (let lz = 0; lz < SCENE_SIZE; lz++) {
+        const [loX, hiX] = scanBounds(plx, maxDistance);
+        const [loZ, hiZ] = scanBounds(plz, maxDistance);
+
+        for (let lx = loX; lx <= hiX; lx++) {
+            for (let lz = loZ; lz <= hiZ; lz++) {
                 const typecodes = [raw.world.wallType(level, lx, lz), raw.world.sceneType(level, lx, lz), raw.world.gdType(level, lx, lz), raw.world.decorType(level, lz, lx)];
 
                 for (const typecode of typecodes) {

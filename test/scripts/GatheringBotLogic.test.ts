@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import {
+import GatheringBot, {
     DEFAULT_CHASE_RADIUS,
     HOME_ARRIVE_RADIUS,
     LOCAL_MINE_PREFER_RADIUS,
@@ -17,7 +17,8 @@ import {
     shouldSoftHomeFromGatherMiss,
     shouldWalkHomeToGatherAnchor,
     shouldYieldGathering,
-    spotWithinGatherRange
+    spotWithinGatherRange,
+    leashScanRadius
 } from '#/bot/scripts/GatheringBot.js';
 import { AXE_BAR_FOR } from '#/bot/api/ToolAcquire.js';
 import { DEFAULT_CAMP_RADIUS, resolveCampRadius, resolveChaseRadius } from '#/bot/api/GatheringLocations.js';
@@ -387,5 +388,93 @@ describe('fishingSessionBroken', () => {
         expect(fishingSessionBroken({ ...calm, inCombat: true, allowCombat: true, spotGone: true })).toBe(true);
         expect(fishingSessionBroken({ ...calm, inCombat: true, allowCombat: true, eventPending: true })).toBe(true);
         expect(fishingSessionBroken({ ...calm, inCombat: true, allowCombat: true, inventoryFull: true })).toBe(true);
+    });
+});
+
+describe('immediate chain re-entry', () => {
+    // Gather.execute() returns within a frame of the tick that spent the rock,
+    // then loopDelay idles ~600ms before findRock() is even called. That gap is
+    // per rock and it is the visible slowness.
+    test('a decided outcome re-walks the chain on the next frame', async () => {
+        const bot = new GatheringBot();
+
+        expect(await bot.loop()).toBeUndefined();
+
+        bot.reenterChainNow('mine: rock spent');
+        expect(await bot.loop()).toBe(0);
+    });
+
+    test('the request is consumed, not sticky', async () => {
+        const bot = new GatheringBot();
+
+        bot.reenterChainNow('mine: pack full');
+        expect(await bot.loop()).toBe(0);
+        // next iteration is paced normally again
+        expect(await bot.loop()).toBeUndefined();
+    });
+});
+
+describe('loc scan bounding', () => {
+    // The leash disk is centred on the anchor, but the scan is bounded from the
+    // player. If the radius were just the leash, wandering off camp would start
+    // silently dropping rocks the filter would have kept.
+    test('the scan radius always covers the whole leash disk', () => {
+        const leash = 10;
+        const anchor = new Tile(3200, 3200, 0);
+
+        for (let dx = -40; dx <= 40; dx += 7) {
+            for (let dz = -40; dz <= 40; dz += 7) {
+                const player = new Tile(anchor.x + dx, anchor.z + dz, 0);
+                const radius = leashScanRadius(leash, anchor.distanceTo(player));
+
+                // every tile the leash filter would accept must be inside the scan
+                for (let tx = -leash; tx <= leash; tx += 5) {
+                    for (let tz = -leash; tz <= leash; tz += 5) {
+                        const tile = new Tile(anchor.x + tx, anchor.z + tz, 0);
+                        expect(anchor.distanceTo(tile)).toBeLessThanOrEqual(leash);
+                        expect(player.distanceTo(tile)).toBeLessThanOrEqual(radius);
+                    }
+                }
+            }
+        }
+    });
+
+    test('standing on the anchor the radius is just the leash', () => {
+        expect(leashScanRadius(10, 0)).toBe(10);
+    });
+});
+
+describe('loc scan memoisation', () => {
+    // findRock() is memoised per tick, so anything the script does mid-tick that
+    // changes which tiles are usable has to invalidate that memo — otherwise a
+    // tile skipped now would keep being offered until the next tick, and the
+    // immediate re-entry after a spent rock would hand back the spent rock.
+    test('cooling a tile down invalidates the memo', () => {
+        const bot = new GatheringBot();
+        const before = bot.gatherFilterEpoch();
+
+        bot.cooldown('3200,3200', 2);
+
+        expect(bot.gatherFilterEpoch()).toBeGreaterThan(before);
+    });
+
+    test('rejecting a tile invalidates the memo', () => {
+        const bot = new GatheringBot();
+        const before = bot.gatherFilterEpoch();
+
+        bot.reject('3200,3200');
+
+        expect(bot.gatherFilterEpoch()).toBeGreaterThan(before);
+    });
+
+    // reject() is idempotent, so a repeat must not churn the memo for nothing
+    test('re-rejecting the same tile does not churn the memo', () => {
+        const bot = new GatheringBot();
+        bot.reject('3200,3200');
+        const after = bot.gatherFilterEpoch();
+
+        bot.reject('3200,3200');
+
+        expect(bot.gatherFilterEpoch()).toBe(after);
     });
 });
