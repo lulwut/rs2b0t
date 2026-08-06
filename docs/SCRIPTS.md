@@ -62,7 +62,7 @@ Tags: `edgeville`, `dungeon`, `monkey-bars`, `wilderness`, `banking`
 | `restockMode` | string | `"After death only"` | Restock mode — one of: Dungeon ladder (out of food), After death only |
 | `bankJunk` | boolean | `true` | Bank junk items |
 
-### GnomeCourse
+### GnomeAgility
 
 Travels to and runs the Gnome Stronghold agility course
 
