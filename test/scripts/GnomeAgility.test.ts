@@ -8,7 +8,11 @@ import { Locs } from '#/bot/api/queries/Locs.js';
 import Tile from '#/bot/api/Tile.js';
 import { Traversal } from '#/bot/api/Traversal.js';
 import { SettingsBag } from '#/bot/runtime/Settings.js';
-import AgilityBot, { atGnomeCourse, GNOME_COURSE_RADIUS, GNOME_COURSE_START } from '#/bot/scripts/AgilityBot.js';
+import GnomeAgility, {
+    atGnomeCourse,
+    GNOME_COURSE_RADIUS,
+    GNOME_COURSE_START
+} from '#/bot/scripts/GnomeAgility.js';
 
 const COURSE = 'Log balance,Obstacle net,Tree branch,Balancing rope,Tree branch,Obstacle net,Obstacle pipe';
 
@@ -28,8 +32,8 @@ let playerTile: Tile;
 let locQueries: number;
 let walks: Tile[];
 
-function bot(): AgilityBot {
-    const instance = new AgilityBot();
+function bot(): GnomeAgility {
+    const instance = new GnomeAgility();
     instance.settings = new SettingsBag({ obstacles: COURSE, searchRadius: 20 });
     return instance;
 }
@@ -74,7 +78,7 @@ afterEach(() => {
     Traversal.walkResilient = original.walkResilient;
 });
 
-describe('GnomeCourse travel', () => {
+describe('GnomeAgility travel', () => {
     test('recognises the whole course on every obstacle plane', () => {
         expect(atGnomeCourse(GNOME_COURSE_START)).toBe(true);
         expect(atGnomeCourse(new Tile(2487, 3426, 0))).toBe(true);

@@ -24,7 +24,7 @@ export function atGnomeCourse(here: WorldTile, start: WorldTile = GNOME_COURSE_S
     return Math.max(Math.abs(here.x - start.x), Math.abs(here.z - start.z)) <= radius;
 }
 
-export const AGILITY_SETTINGS: SettingsSchema = {
+export const GNOME_AGILITY_SETTINGS: SettingsSchema = {
     obstacles: {
         type: 'string',
         default: 'Log balance,Obstacle net,Tree branch,Balancing rope,Tree branch,Obstacle net,Obstacle pipe',
@@ -34,7 +34,7 @@ export const AGILITY_SETTINGS: SettingsSchema = {
     searchRadius: { type: 'number', default: 20, min: 4, max: 64, label: 'Obstacle search radius (tiles)' }
 };
 
-export default class AgilityBot extends TaskBot {
+export default class GnomeAgility extends TaskBot {
     override loopDelay = 600;
 
     private course: string[] = [];
@@ -112,7 +112,7 @@ export default class AgilityBot extends TaskBot {
 }
 
 class TravelToCourse implements Task {
-    constructor(private bot: AgilityBot) {}
+    constructor(private bot: GnomeAgility) {}
 
     validate(): boolean {
         const here = Game.tile();
@@ -134,7 +134,7 @@ class TravelToCourse implements Task {
 class DoObstacle implements Task {
     private stuck = 0;
 
-    constructor(private bot: AgilityBot) {}
+    constructor(private bot: GnomeAgility) {}
 
     private find(name: string): Loc | null {
         const within = this.bot.searchRadius();

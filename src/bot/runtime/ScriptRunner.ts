@@ -38,8 +38,9 @@ function scheduleNextLoop(ctx: ScriptContext, cadence: LoopCadence): void {
  * (unit tests) there is no game state to protect and the gate stays out of
  * the way.
  */
-function ingameOrDetached(): boolean {
-    return !reader.attached() || (reader.ingame() && reader.sceneState() === 2 && reader.worldTile() !== null);
+export function scriptStateReadyOrDetached(): boolean {
+    return !reader.attached()
+        || (reader.ingame() && reader.sceneState() === 2 && reader.worldTile() !== null && reader.statsReady());
 }
 
 class ScriptRunnerImpl {
@@ -99,10 +100,10 @@ class ScriptRunnerImpl {
         this.loggedOutSince = 0;
         ctx.loopInFlight = true;
         (async () => {
-            if (!ingameOrDetached()) {
-                ctx.addLog('warn', 'not ingame — waiting for login before the script reads game state (auto-login kicks in if credentials are saved)');
-                await Execution.delayUntil(ingameOrDetached, 0);
-                ctx.addLog('info', 'ingame — starting');
+            if (!scriptStateReadyOrDetached()) {
+                ctx.addLog('warn', 'game state not ready — waiting for login, scene, and stats before the script starts (auto-login kicks in if credentials are saved)');
+                await Execution.delayUntil(scriptStateReadyOrDetached, 0);
+                ctx.addLog('info', 'game state ready — starting');
             }
             await bot.onStart?.();
         })()
@@ -188,10 +189,10 @@ class ScriptRunnerImpl {
             return;
         }
 
-        if (!ingameOrDetached()) {
+        if (!scriptStateReadyOrDetached()) {
             if (this.loggedOutSince === 0) {
                 this.loggedOutSince = performance.now();
-                ctx.addLog('warn', 'logged out — holding the loop until back ingame');
+                ctx.addLog('warn', 'game state unavailable — holding the loop until login, scene, and stats are ready');
             }
             // deliberate wait, not a stall: keep StallGuard from churn-restarting
             ctx.progress();
@@ -200,7 +201,7 @@ class ScriptRunnerImpl {
             return;
         }
         if (this.loggedOutSince > 0) {
-            ctx.addLog('info', `back ingame after ${Math.round((performance.now() - this.loggedOutSince) / 1000)}s — resuming the loop`);
+            ctx.addLog('info', `game state ready after ${Math.round((performance.now() - this.loggedOutSince) / 1000)}s — resuming the loop`);
             this.loggedOutSince = 0;
         }
 

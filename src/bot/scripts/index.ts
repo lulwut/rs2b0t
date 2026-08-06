@@ -1,4 +1,4 @@
-import { AGILITY_SETTINGS } from './AgilityBot.js';
+import { GNOME_AGILITY_SETTINGS } from './GnomeAgility.js';
 import { FISHING_LOCATION_OPTIONS } from '../api/FishingLocations.js';
 import { FISHING_METHOD_OPTIONS } from '../api/FishingMethods.js';
 import { MINING_LOCATION_OPTIONS } from '../api/MiningLocations.js';
@@ -17,7 +17,7 @@ import {
 import { ROCK_OPTIONS } from '../api/MiningRocks.js';
 import EdgevilleMonkeyBars, { EDGEVILLE_MONKEYBARS_SETTINGS } from './EdgevilleMonkeyBars.js';
 import { ScriptRegistry } from '../runtime/ScriptRegistry.js';
-import AgilityBot from './AgilityBot.js';
+import GnomeAgility from './GnomeAgility.js';
 import ArdyFighter, { SETTINGS as ARDY_SETTINGS } from './ArdyFighter.js';
 import AutoFighter, { SETTINGS as AUTOFIGHTER_SETTINGS } from './AutoFighter.js';
 import ArdyThiever, { SETTINGS as ARDYTHIEVER_SETTINGS } from './ArdyThiever.js';
@@ -508,12 +508,12 @@ ScriptRegistry.register({
 });
 
 ScriptRegistry.register({
-    name: 'GnomeCourse',
+    name: 'GnomeAgility',
     description: 'Travels to and runs the Gnome Stronghold agility course',
     category: 'Agility',
     tags: ['course', 'gnome'],
-    settingsSchema: AGILITY_SETTINGS,
-    create: () => new AgilityBot()
+    settingsSchema: GNOME_AGILITY_SETTINGS,
+    create: () => new GnomeAgility()
 });
 
 ScriptRegistry.register({

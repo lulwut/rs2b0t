@@ -18,6 +18,16 @@ const SCRATCH_SLOT = 499;
 let raw: RawClient | null = null;
 let packetListener: ((ptype: number) => void) | null = null;
 
+/** Whether the initial login snapshot has populated every active skill level. */
+export function activeStatsReady(baseLevels: ArrayLike<number>): boolean {
+    for (let i = 0; i < Skill.count; i++) {
+        if (Skill.used[i] && (baseLevels[i] ?? 0) <= 0) {
+            return false;
+        }
+    }
+    return true;
+}
+
 /**
  * Object/NPC vertical extent for hulls. RS model space: minY = max(-vertexY)
  * (height above origin) — same as ClientNpc.height. maxY is below-origin only.
@@ -308,6 +318,11 @@ export const reader = {
 
     skillUsed(index: number): boolean {
         return Skill.used[index] ?? false;
+    },
+
+    /** True once the login stat snapshot has populated every active skill. */
+    statsReady(): boolean {
+        return raw !== null && activeStatsReady(raw.statBaseLevel);
     },
 
     stat(index: number): StatSnapshot {

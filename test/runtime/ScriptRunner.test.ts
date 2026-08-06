@@ -1,7 +1,8 @@
 import { afterEach, expect, test } from 'bun:test';
+import { reader } from '#/bot/adapter/ClientAdapter.js';
 import { LoopingBot } from '#/bot/api/Bot.js';
 import { Scheduler } from '#/bot/runtime/Scheduler.js';
-import { ScriptRunner } from '#/bot/runtime/ScriptRunner.js';
+import { scriptStateReadyOrDetached, ScriptRunner } from '#/bot/runtime/ScriptRunner.js';
 import type { ScriptMeta } from '#/bot/runtime/ScriptRegistry.js';
 
 class SelfStoppingBot extends LoopingBot {
@@ -65,4 +66,33 @@ test('a script can restart after stopping itself during onStart', async () => {
     expect(instances).toHaveLength(2);
     expect(instances[1]?.starts).toBe(1);
     expect(instances[1]?.stops).toBe(1);
+});
+
+test('an attached script waits for the login stat snapshot before onStart can read XP', () => {
+    const original = {
+        attached: reader.attached,
+        ingame: reader.ingame,
+        sceneState: reader.sceneState,
+        worldTile: reader.worldTile,
+        statsReady: reader.statsReady
+    };
+
+    try {
+        reader.attached = () => true;
+        reader.ingame = () => true;
+        reader.sceneState = () => 2;
+        reader.worldTile = () => ({ x: 3200, z: 3200, level: 0 });
+
+        reader.statsReady = () => false;
+        expect(scriptStateReadyOrDetached()).toBe(false);
+
+        reader.statsReady = () => true;
+        expect(scriptStateReadyOrDetached()).toBe(true);
+    } finally {
+        reader.attached = original.attached;
+        reader.ingame = original.ingame;
+        reader.sceneState = original.sceneState;
+        reader.worldTile = original.worldTile;
+        reader.statsReady = original.statsReady;
+    }
 });
